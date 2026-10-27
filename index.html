@@ -1,0 +1,2145 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Heenisteininu - Taktischer Gefechtsstand (TOC)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.css" />
+  <style>
+    * { box-sizing: border-box; }
+    body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; background: #0f172a; }
+
+    /* ==========================================================================
+       1.9秒頻率戰術呼吸燈號 (Status Breathing LED)
+       ========================================================================== */
+    .status-container {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: rgba(15, 23, 42, 0.75); padding: 3px 9px;
+      border-radius: 4px; border: 1px solid #334155;
+    }
+    .status-led {
+      width: 9px; height: 9px; border-radius: 50%;
+      background-color: #10b981;
+      box-shadow: 0 0 8px #10b981, 0 0 14px #10b981;
+      animation: breathe-green 1.9s infinite ease-in-out;
+      flex-shrink: 0;
+    }
+    .status-led.busy {
+      background-color: #f59e0b;
+      box-shadow: 0 0 8px #f59e0b, 0 0 14px #f59e0b;
+      animation: breathe-amber 0.9s infinite ease-in-out;
+    }
+    .status-led.error {
+      background-color: #ef4444;
+      box-shadow: 0 0 8px #ef4444, 0 0 14px #ef4444;
+      animation: breathe-red 1.2s infinite ease-in-out;
+    }
+    @keyframes breathe-green {
+      0%, 100% { opacity: 0.28; transform: scale(0.88); box-shadow: 0 0 3px #10b981; }
+      50% { opacity: 1; transform: scale(1.12); box-shadow: 0 0 10px #10b981, 0 0 18px rgba(16, 185, 129, 0.75); }
+    }
+    @keyframes breathe-amber {
+      0%, 100% { opacity: 0.35; transform: scale(0.9); box-shadow: 0 0 3px #f59e0b; }
+      50% { opacity: 1; transform: scale(1.15); box-shadow: 0 0 10px #f59e0b, 0 0 18px rgba(245, 158, 11, 0.8); }
+    }
+    @keyframes breathe-red {
+      0%, 100% { opacity: 0.35; transform: scale(0.9); box-shadow: 0 0 3px #ef4444; }
+      50% { opacity: 1; transform: scale(1.15); box-shadow: 0 0 10px #ef4444, 0 0 18px rgba(239, 68, 68, 0.8); }
+    }
+
+    /* ==========================================================================
+       Anmelde-Gate (Einsatzcode) & Einsatzverwaltung
+       ========================================================================== */
+    #mission-login-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+      z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 15px;
+      overflow-y: auto;
+    }
+    .login-card {
+      background: #1e293b; color: #f8fafc; width: 460px; max-width: 100%;
+      padding: 26px 22px; border-radius: 12px; border: 1px solid #334155;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.8); text-align: center;
+    }
+    .login-card h2 { margin: 0 0 6px 0; color: #00ffcc; font-size: 20px; letter-spacing: 0.5px; }
+    .login-card p { margin: 0 0 18px 0; color: #94a3b8; font-size: 12px; line-height: 1.5; }
+    .login-field { text-align: left; margin-bottom: 12px; }
+    .login-field label { display: block; font-size: 12px; color: #cbd5e1; margin-bottom: 4px; font-weight: 600; }
+    .login-field input {
+      width: 100%; padding: 9px 12px; border-radius: 6px; border: 1px solid #475569;
+      background: #0f172a; color: #00ffcc; font-size: 14px; font-family: monospace; outline: none;
+    }
+    .login-field input:focus { border-color: #00ffcc; }
+    .login-btn {
+      width: 100%; padding: 11px; background: #00ffcc; color: #0f172a; border: none;
+      border-radius: 6px; font-size: 14px; font-weight: 800; cursor: pointer; margin-top: 6px;
+      transition: opacity 0.2s;
+    }
+    .login-btn:hover { opacity: 0.9; }
+    .login-btn-secondary {
+      width: 100%; padding: 9px; background: #334155; color: #f8fafc; border: 1px solid #475569;
+      border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 8px;
+    }
+    .login-btn-secondary:hover { background: #475569; }
+
+    #mission-manager-box {
+      display: none; margin-top: 14px; background: #0f172a; border: 1px solid #334155;
+      border-radius: 8px; padding: 10px; text-align: left; max-height: 190px; overflow-y: auto;
+    }
+    .mm-title { font-size: 12px; color: #38bdf8; font-weight: bold; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .mm-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 8px; background: #1e293b; border-radius: 4px; margin-bottom: 5px;
+      border-left: 3px solid #00ffcc; font-family: monospace; font-size: 13px;
+    }
+    .mm-actions { display: flex; gap: 5px; }
+    .mm-btn {
+      padding: 3px 7px; font-size: 11px; border: none; border-radius: 3px;
+      cursor: pointer; font-weight: bold; color: #fff;
+    }
+    .mm-btn-go { background: #3b82f6; }
+    .mm-btn-kml { background: #10b981; }
+    .mm-btn-del { background: #ef4444; }
+
+    .login-hint { margin-top: 12px; font-size: 11px; color: #64748b; text-align: left; background: #0f172a; padding: 10px; border-radius: 6px; line-height: 1.5; }
+
+    /* ==========================================================================
+       Obere Navigationsleiste (Topbar)
+       ========================================================================== */
+    #topbar {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+      background: #1e293b; color: #f8fafc; padding: 6px 10px; font-size: 13px;
+      border-bottom: 1px solid #334155; z-index: 2000; position: relative;
+    }
+    #topbar input, #topbar select, #topbar button {
+      padding: 4px 8px; border-radius: 4px; border: 1px solid #475569; font-size: 12px;
+    }
+    #topbar input, #topbar select { background: #0f172a; color: #fff; }
+    .mission-badge {
+      background: #0f172a; color: #00ffcc; border: 1px solid #00ffcc;
+      padding: 3px 7px; border-radius: 4px; font-family: monospace; font-weight: bold;
+      display: flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap;
+      font-size: 12px;
+    }
+    .btn { cursor: pointer; font-weight: 600; border: none !important; color: white; transition: opacity 0.2s; white-space: nowrap; }
+    .btn:hover:not(:disabled) { opacity: 0.9; }
+    .btn-save { background: #ef4444; }
+    .btn-atak { background: #3b82f6; }
+    .btn-video { background: #059669; }
+    .btn-manage { background: #0284c7; display: none; }
+    .btn-del-mission { background: #7f1d1d; color: #fecaca; display: none; }
+    .btn-del-mission:hover { background: #dc2626; color: #fff; }
+
+    .right-group { margin-left: auto; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+    #status { color: #38bdf8; font-weight: bold; font-size: 12px; white-space: nowrap; font-family: monospace; }
+    #user-callsign { border-color: #38bdf8 !important; width: 115px; }
+
+    #map { height: calc(100% - 44px); width: 100%; background: #000000; position: relative; }
+
+    /* 唯讀模式下僅隱藏繪圖與編輯工具列，保留獨立的 Fullscreen 按鈕 */
+    body.readonly-mode .leaflet-pm-toolbar.leaflet-pm-draw,
+    body.readonly-mode .leaflet-pm-toolbar.leaflet-pm-edit {
+      display: none !important;
+    }
+
+    .pm-custom-btn {
+      display: flex !important; align-items: center; justify-content: center;
+      position: relative; width: 100%; height: 100%; cursor: pointer;
+    }
+    .pm-custom-btn svg { width: 18px; height: 18px; stroke: #333; transition: opacity 0.2s; }
+    .pm-undo-disabled { pointer-events: none; opacity: 0.35; }
+    .pm-undo-badge {
+      position: absolute; bottom: 2px; right: 2px; background: #2563eb; color: #ffffff;
+      font-size: 9px; font-weight: bold; line-height: 12px; min-width: 12px; height: 12px;
+      padding: 0 3px; border-radius: 6px; text-align: center; display: none;
+    }
+
+    /* ==========================================================================
+       Objektübersicht (Feature Summary Control) oben rechts
+       ========================================================================== */
+    .feature-summary-control { position: relative; }
+    .feature-summary-btn {
+      width: 44px; height: 44px; background: #ffffff; border: 2px solid rgba(0,0,0,0.2);
+      border-radius: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      font-size: 20px; box-shadow: 0 1px 5px rgba(0,0,0,0.4); position: relative;
+      transition: background 0.15s; user-select: none;
+    }
+    .feature-summary-btn:hover { background: #f1f5f9; }
+    .feature-summary-badge {
+      position: absolute; top: -5px; right: -5px; background: #2563eb; color: #fff;
+      font-size: 10px; font-weight: bold; min-width: 18px; height: 18px; line-height: 18px;
+      border-radius: 9px; text-align: center; padding: 0 4px; border: 1.5px solid #fff;
+      font-family: system-ui, sans-serif;
+    }
+    #feature-summary-panel {
+      display: none; position: absolute; top: 0; right: 54px; width: 360px;
+      max-width: calc(100vw - 80px); max-height: 68vh;
+      background: rgba(15, 23, 42, 0.96); color: #f8fafc; border: 1px solid #475569;
+      border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,0.75);
+      flex-direction: column; overflow: hidden; z-index: 2000;
+    }
+    #feature-summary-panel.open { display: flex; }
+    .fsp-header {
+      background: #1e293b; padding: 9px 12px; display: flex; align-items: center;
+      justify-content: space-between; border-bottom: 1px solid #334155; font-size: 13px; font-weight: bold;
+      color: #38bdf8;
+    }
+    .fsp-close {
+      background: transparent; border: none; color: #94a3b8; font-size: 15px;
+      cursor: pointer; font-weight: bold; padding: 0 4px;
+    }
+    .fsp-close:hover { color: #fff; }
+    #fsp-list {
+      flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px;
+    }
+    .fsp-card {
+      background: #1e293b; border: 1px solid #334155; border-left: 4px solid #ef4444;
+      border-radius: 6px; padding: 10px 12px; font-size: 13px; transition: border-color 0.2s;
+    }
+    .fsp-card:hover { border-color: #38bdf8; }
+    .fsp-card-title {
+      font-size: 15px; font-weight: bold; color: #f8fafc; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .fsp-card-title:hover { color: #38bdf8; }
+    .fsp-type-tag {
+      font-size: 10px; background: #0f172a; color: #94a3b8; padding: 2px 6px;
+      border-radius: 4px; border: 1px solid #334155; font-weight: normal;
+    }
+
+    #coord-bar {
+      position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.92); color: #38bdf8; padding: 6px 14px;
+      border-radius: 6px; font-family: 'Courier New', Consolas, monospace; font-size: 13px;
+      font-weight: bold; z-index: 1000; border: 1px solid #334155;
+      pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      white-space: nowrap; letter-spacing: 0.5px; max-width: 94vw;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .mgrs-grid-label {
+      background: rgba(15, 23, 42, 0.85); color: #f8fafc; padding: 1px 5px;
+      border-radius: 4px; font-family: 'Courier New', Consolas, monospace; font-size: 11px;
+      font-weight: bold; border: 1px solid #3b82f6; white-space: nowrap;
+      pointer-events: none; box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+    }
+    .map-persistent-label {
+      background: rgba(15, 23, 42, 0.88); color: #f8fafc; font-weight: bold; font-size: 12px;
+      padding: 2px 6px; border: 1px solid #475569; border-radius: 4px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5); white-space: nowrap;
+    }
+
+    /* Einsatztagebuch & Funkspruch-Panel unten rechts (400px 寬度單行不折行) */
+    #log-panel {
+      position: fixed; right: 12px; bottom: 48px; width: 400px; max-width: calc(100vw - 24px);
+      background: rgba(15, 23, 42, 0.96); color: #f8fafc; border: 1px solid #475569;
+      border-radius: 8px; box-shadow: 0 8px 25px rgba(0,0,0,0.7); z-index: 1500;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    #log-header {
+      background: #1e293b; padding: 8px 12px; display: flex; align-items: center;
+      justify-content: space-between; gap: 8px; cursor: pointer; user-select: none;
+      border-bottom: 1px solid #334155; font-size: 13px; font-weight: bold;
+      white-space: nowrap;
+    }
+    #log-header-left { display: flex; align-items: center; gap: 6px; color: #38bdf8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #log-header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap; }
+    #btn-clear-logs {
+      display: none; background: #ef4444; color: #fff; border: none; border-radius: 4px;
+      padding: 2px 7px; font-size: 12px; cursor: pointer;
+    }
+    #btn-clear-logs:hover { background: #dc2626; }
+    #log-body { display: flex; flex-direction: column; height: 240px; }
+    #log-panel.collapsed #log-body { display: none !important; }
+    #log-panel.collapsed #log-header { border-bottom: none; }
+    #log-locked-msg {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 16px; text-align: center; color: #94a3b8; font-size: 12px; line-height: 1.5;
+    }
+    #log-list {
+      flex: 1; overflow-y: auto; padding: 8px 10px; font-size: 12px;
+      display: none; flex-direction: column; gap: 6px;
+    }
+    .log-item {
+      padding: 5px 8px; border-radius: 4px; background: rgba(30, 41, 59, 0.85);
+      border-left: 3px solid #38bdf8; word-break: break-all; line-height: 1.4;
+    }
+    .log-item.log-action { border-left-color: #f59e0b; color: #e2e8f0; }
+    .log-item.log-chat { border-left-color: #10b981; color: #ffffff; }
+    .log-meta { font-size: 10px; color: #94a3b8; margin-bottom: 2px; font-family: monospace; }
+    #log-input-area {
+      display: none; padding: 6px 8px; background: #1e293b; border-top: 1px solid #334155; gap: 6px;
+    }
+    #log-input {
+      flex: 1; background: #0f172a; color: #fff; border: 1px solid #475569;
+      border-radius: 4px; padding: 5px 8px; font-size: 12px;
+    }
+    #btn-send-log {
+      background: #3b82f6; color: #fff; border: none; border-radius: 4px;
+      padding: 5px 10px; font-size: 12px; font-weight: bold; cursor: pointer;
+    }
+
+    /* Modal-Fenster */
+    #modal-overlay {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.65); z-index: 9999; align-items: center; justify-content: center;
+    }
+    #modal-box {
+      background: #1e293b; color: #fff; padding: 20px; border-radius: 8px;
+      width: 400px; max-width: 92%; box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      border: 1px solid #475569; max-height: 92vh; overflow-y: auto;
+    }
+    #modal-box h3 { margin: 0 0 15px 0; font-size: 16px; color: #38bdf8; }
+    .form-group { margin-bottom: 11px; }
+    .form-group label { display: block; margin-bottom: 4px; font-size: 12px; color: #cbd5e1; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #475569;
+      background: #0f172a; color: #fff; font-size: 13px;
+    }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+    .btn-cancel { background: #64748b; }
+
+    /* Popup-Schaltflächen */
+    .popup-btn-group { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+    .popup-btn {
+      flex: 1 1 auto; padding: 5px 8px; border: none; border-radius: 4px;
+      color: #fff; font-size: 12px; font-weight: bold; cursor: pointer; text-align: center;
+    }
+    .popup-btn-focus { background: #0284c7; }
+    .popup-btn-edit { background: #3b82f6; }
+    .popup-btn-del { background: #ef4444; }
+    .popup-btn-video { background: #059669; }
+    .custom-cot-icon { background: transparent; border: none; }
+
+  /* ==========================================================================
+       📱 行動裝置與戰術平板 (手機 / 8吋~10吋平板) 響應式防跑版優化 (Heenisteininu)
+       ========================================================================== */
+    @media (max-width: 900px) {
+      body, html { height: 100dvh; }
+
+      /* 1. 自動隱藏頂部重複的 Token / Konto / Repo / Rufzeichen 輸入框 (點 Einsatz 徽章即可修改) */
+      #gh-token, #gh-owner, #gh-repo, #user-callsign {
+        display: none !important;
+      }
+
+      /* 2. 針對德文長按鈕緊湊化排版：確保頂部最多兩排、按鈕自動均分不擠壓 */
+      #topbar {
+        padding: 5px 8px;
+        gap: 5px;
+      }
+      #topbar > strong {
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .mission-badge {
+        padding: 2px 6px;
+        font-size: 11px;
+      }
+      .right-group {
+        margin-left: auto;
+        width: auto;
+        gap: 4px;
+      }
+      .status-container {
+        padding: 2px 6px;
+        gap: 5px;
+      }
+      #status {
+        font-size: 11px;
+        max-width: 110px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #topbar button.btn {
+        flex: 1 1 auto;
+        text-align: center;
+        padding: 5px 6px;
+        font-size: 11px;
+      }
+
+      /* 3. 左側與右上角地圖控制項微縮，避免在小螢幕遮擋過多圖資 */
+      .leaflet-touch .leaflet-bar a {
+        width: 32px;
+        height: 32px;
+        line-height: 32px;
+      }
+      .feature-summary-btn {
+        width: 38px;
+        height: 38px;
+        font-size: 18px;
+      }
+      #feature-summary-panel {
+        right: 46px;
+        width: calc(100vw - 64px);
+        max-width: 320px;
+        max-height: 55dvh;
+      }
+
+      /* 4. 底部 MGRS 座標列與右下角 Einsatztagebuch 上下對齊錯開，絕不重疊 */
+      #coord-bar {
+        bottom: 6px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(100vw - 16px);
+        max-width: calc(100vw - 16px);
+        text-align: center;
+        font-size: 11px;
+        padding: 4px 8px;
+      }
+      #log-panel {
+        right: 8px;
+        left: 8px;
+        bottom: 36px;
+        width: auto;
+        max-width: none;
+      }
+      #log-body {
+        height: 170px;
+      }
+
+      /* 5. 防止手機點擊輸入框時瀏覽器強制放大畫面 (Auto-Zoom) 導致跑版 */
+      input, select, textarea {
+        font-size: 16px !important;
+      }
+      .login-card {
+        padding: 18px 16px;
+      }
+    }
+  </style>
+</head>
+<body class="readonly-mode">
+
+<div id="mission-login-overlay">
+  <div class="login-card">
+    <h2>🐶 Heenisteininu Gefechtsstand</h2>
+    <p>Bitte bestehenden Einsatzcode eingeben oder S2-Token zur Einsatzleitung verwenden</p>
+    
+    <div class="login-field">
+      <label>🎯 Einsatzcode (Mission Code) *</label>
+      <input type="text" id="login-mission-code" placeholder="z. B. wenshan-01" autocomplete="off" onkeydown="if(event.key==='Enter') enterMissionFromLogin()" />
+    </div>
+    
+    <div class="login-field">
+      <label>🔑 Führungsoffizier GitHub-Token (Pflicht für Erstellung & Bearbeitung)</label>
+      <input type="password" id="login-token" placeholder="ghp_... (Ohne Token nur Lesezugriff auf bestehende Einsätze)" onkeydown="if(event.key==='Enter') enterMissionFromLogin()" />
+    </div>
+
+    <div class="login-field">
+      <label>👤 Ihr Rufzeichen (Callsign)</label>
+      <input type="text" id="login-callsign" placeholder="z. B. Stephanie" onkeydown="if(event.key==='Enter') enterMissionFromLogin()" />
+    </div>
+
+    <button class="login-btn" id="btn-login-submit" onclick="enterMissionFromLogin()">🚀 Authentifizieren & Einsatz beitreten</button>
+    <button class="login-btn-secondary" onclick="loadMissionDirectoryList()">🗂️ Bestehende Einsätze in der Cloud verwalten (Token erf.)</button>
+
+    <div id="mission-manager-box">
+      <div class="mm-title">
+        <span>📂 Aktive Einsatzordner (`missions/`)</span>
+        <span id="mm-count" style="color:#00ffcc;"></span>
+      </div>
+      <div id="mission-manager-list"></div>
+    </div>
+
+    <div class="login-hint">
+      🛡️ <strong>Zugriffsschutz:</strong> Ohne gültigen Token ist nur das Betrachten bereits existierender Einsätze im Lesemodus möglich. Das Erstellen oder Löschen von Einsatzdatenbanken erfordert verifizierte Offiziersrechte!
+    </div>
+  </div>
+</div>
+
+<div id="topbar">
+  <strong>🐶 Heen</strong>
+  <div class="mission-badge" onclick="switchMissionPrompt()" title="Klicken, um den Einsatz zu wechseln oder zu verwalten">
+    <span>🎯 Einsatz:</span>
+    <span id="current-mission-label">Nicht angemeldet</span>
+    <span style="font-size:10px; color:#94a3b8;">🔄</span>
+  </div>
+
+  <input type="password" id="gh-token" placeholder="GitHub-Token (Schreibrecht)" style="width:130px;" />
+  <input type="text" id="gh-owner" placeholder="Konto" style="width:80px;" />
+  <input type="text" id="gh-repo" placeholder="Repo" style="width:85px;" />
+  
+  <button class="btn btn-save" id="btn-publish" onclick="publishToGitHub()" style="display:none;">☁️ Speichern & Senden</button>
+  <button class="btn btn-video" onclick="promptOpenTacticalPopout()" title="Stream-URL eingeben, um taktisches Videofenster zu öffnen">📺 Videoüberwachung</button>
+  <button class="btn btn-manage" id="btn-top-manage" onclick="openMissionManagerModal()" title="Cloud-Einsatzverwaltung öffnen">🗂️ Einsätze</button>
+  <button class="btn btn-del-mission" id="btn-delete-mission" onclick="deleteMissionByCode(currentMissionCode)" title="Diesen Einsatz samt aller Dateien unwiderruflich aus der Cloud löschen">💣 Einsatz löschen</button>
+  
+  <div class="right-group">
+    <div class="status-container" title="Taktischer Systemstatus">
+      <span id="status-led" class="status-led"></span>
+      <span id="status">Einsatzbereit</span>
+    </div>
+    <input type="text" id="user-callsign" placeholder="👤 Rufzeichen" title="Ihr Rufzeichen wird bei Änderungen automatisch mit Zeitstempel protokolliert" />
+  </div>
+</div>
+
+<div id="map"></div>
+
+<div id="coord-bar">🎯 Maus bewegen für MGRS-Koordinaten...</div>
+
+<div id="log-panel" class="collapsed">
+  <div id="log-header" onclick="toggleLogPanel()">
+    <div id="log-header-left">
+      <span id="log-lock-icon">🔒</span>
+      <span id="log-title-text">Einsatztagebuch & Funk (0)</span>
+    </div>
+    <div id="log-header-actions">
+      <button id="btn-clear-logs" onclick="clearAllLogs(event)" title="Gesamtes Einsatztagebuch unwiderruflich leeren">🗑️</button>
+      <span id="log-toggle-icon" style="color:#94a3b8; font-size:12px;">▲ Öffnen</span>
+    </div>
+  </div>
+  <div id="log-body">
+    <div id="log-locked-msg">
+      🔒 Tagebuch & Bearbeitung gesperrt<br>Bitte oben einen gültigen GitHub-Token mit Schreibrechten eingeben, um die Freigabe zu erhalten.
+    </div>
+    <div id="log-list"></div>
+    <div id="log-input-area">
+      <input type="text" id="log-input" placeholder="Lagemeldung eingeben (Enter zum Senden)..." onkeydown="if(event.key==='Enter') sendChatMessage()" />
+      <button id="btn-send-log" onclick="sendChatMessage()">Senden</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal-Fenster zum Erstellen / Bearbeiten von taktischen Objekten -->
+<div id="modal-overlay">
+  <div id="modal-box">
+    <h3 id="modal-title">📍 Taktisches Objekt konfigurieren</h3>
+    <div class="form-group">
+      <label>Bezeichnung / Ortsname *</label>
+      <input type="text" id="feat-name" placeholder="z. B. Beobachtungsposten Alpha" />
+    </div>
+    <div class="form-group">
+      <label>Taktische Kategorie & Signalfarbe</label>
+      <select id="feat-cat">
+        <option value="danger">🔴 Gefahrenzone / Sperrgebiet (Rot)</option>
+        <option value="rescue">🟡 Rettungspunkt / Suchgebiet (Gelb)</option>
+        <option value="supply">🟢 Versorgungspunkt / Sicherheitszone (Grün)</option>
+        <option value="friendly">🔵 Eigene Kräfte / Gefechtsstand (Blau)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>🎯 Präzise MGRS-Koordinate (Direkteingabe zur Korrektur)</label>
+      <input type="text" id="feat-mgrs" style="font-family:monospace; color:#38bdf8; font-weight:bold;" placeholder="z. B. 51R UH 51909 65861" />
+    </div>
+    <div class="form-group">
+      <label>Lagebeschreibung / Kontakt / Bemerkungen</label>
+      <textarea id="feat-desc" rows="2" placeholder="Detailinformationen eingeben (in ATAK per Klick auf das Symbol sichtbar)..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>🎥 Live-Stream-URL (Optional, für Pop-out & ATAK-Link)</label>
+      <input type="text" id="feat-stream" placeholder="Vollständige Stream-URL (z. B. http://... oder https://...)" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" id="modal-cancel-btn" style="padding:7px 14px; border-radius:4px;" onclick="cancelModal()">Abbrechen</button>
+      <button class="btn btn-atak" style="padding:7px 14px; border-radius:4px;" onclick="saveModal()">Übernehmen</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.min.js"></script>
+<script src="https://unpkg.com/mgrs@1.0.0/dist/mgrs.js"></script>
+
+<script>
+  // ============================================================================
+  // 0. Globale Einsatzvariablen & Stream-URL-Verarbeitung
+  // ============================================================================
+  let currentMissionCode = '';
+  let isTokenVerified = false;
+
+  function setSystemStatus(text, ledState = 'ok') {
+    const statusEl = document.getElementById('status');
+    const ledEl = document.getElementById('status-led');
+    if (statusEl) statusEl.innerText = text;
+    if (ledEl) {
+      ledEl.classList.remove('busy', 'error');
+      if (ledState === 'busy') ledEl.classList.add('busy');
+      else if (ledState === 'error') ledEl.classList.add('error');
+    }
+  }
+
+  function injectCustomToolbarIcons() {
+    const undoIconEl = document.querySelector('.leaflet-pm-icon-undo');
+    if (undoIconEl) {
+      undoIconEl.innerHTML = `
+        <div id="pm-undo-container" class="pm-custom-btn pm-undo-disabled">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7v6h6"></path>
+            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
+          </svg>
+          <span id="pm-undo-badge" class="pm-undo-badge">0</span>
+        </div>`;
+    }
+    const fsIconEl = document.querySelector('.leaflet-pm-icon-fullscreen');
+    if (fsIconEl) {
+      fsIconEl.innerHTML = `
+        <div class="pm-custom-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+          </svg>
+        </div>`;
+    }
+    if (typeof cleanAndRefreshUndoUI === 'function') {
+      cleanAndRefreshUndoUI();
+    }
+  }
+
+  function sanitizeMissionCode(raw) {
+    return String(raw || '').trim().replace(/[^a-zA-Z0-9_-]/g, '-');
+  }
+
+  function getMissionFilePath(fileName, customCode = null) {
+    const code = customCode || currentMissionCode;
+    return `missions/${code}/${fileName}`;
+  }
+
+  function formatCustomStreamUrl(val) {
+    const v = String(val || '').trim();
+    if (!v) return '';
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(v)) {
+      return v;
+    }
+    return 'http://' + v;
+  }
+
+  window.openTacticalStreamWindow = function(rawStreamUrl) {
+    const fullUrl = formatCustomStreamUrl(rawStreamUrl);
+    if (!fullUrl) return;
+    const winName = 'HeenTAK_Monitor_' + Math.random().toString(36).substring(2, 7);
+    const winSpecs = 'width=540,height=360,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=no';
+
+    const isFlvStream = /\/flv\/|\.flv($|\?)/i.test(fullUrl);
+    if (!isFlvStream) {
+      window.open(fullUrl, winName, winSpecs);
+      return;
+    }
+
+    const safeUrl = fullUrl.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const playerHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>🎥 Taktischer CCTV-Monitor (FLV)</title>
+  <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js"><\/script>
+  <style>
+    body, html { margin:0; padding:0; width:100%; height:100%; background:#0f172a; color:#f8fafc; font-family:monospace; display:flex; flex-direction:column; overflow:hidden; }
+    #bar { background:#1e293b; padding:6px 10px; font-size:11px; color:#00ffcc; border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #vid-wrap { flex:1; display:flex; align-items:center; justify-content:center; position:relative; background:#000; overflow:hidden; }
+    video { width:100%; height:100%; object-fit:contain; }
+    #msg { position:absolute; color:#94a3b8; font-size:12px; text-align:center; padding:16px; line-height:1.6; pointer-events:none; }
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <span>🟢 LIVE FLV-STREAM</span>
+    <span style="color:#38bdf8; font-size:10px; margin-left:8px;">${escapeHTML(fullUrl)}</span>
+  </div>
+  <div id="vid-wrap">
+    <video id="v" autoplay muted controls playsinline></video>
+    <div id="msg">⏳ Dekodiere Live-Video-Stream (FLV)...</div>
+  </div>
+  <script>
+    const url = '${safeUrl}';
+    const v = document.getElementById('v');
+    const msg = document.getElementById('msg');
+    if (window.mpegts && mpegts.isSupported()) {
+      const player = mpegts.createPlayer({ type: 'flv', isLive: true, hasAudio: false, url: url }, { enableWorker: true, enableStashBuffer: false, stashInitialSize: 128 });
+      player.attachMediaElement(v);
+      player.load();
+      player.play().then(() => { msg.style.display = 'none'; }).catch(() => { msg.innerText = '▶️ Bitte auf das Bild klicken, um die Wiedergabe zu starten'; });
+      v.addEventListener('playing', () => { msg.style.display = 'none'; });
+      player.on(mpegts.Events.ERROR, (errType) => {
+        msg.style.display = 'block';
+        msg.innerHTML = '⚠️ Stream durch Zielserver (CORS) blockiert oder offline (' + errType + ')<br><span style="color:#f59e0b;font-size:11px;">Empfehlung: Stream über MediaMTX-Relay weiterleiten</span>';
+      });
+    } else {
+      msg.innerText = '❌ Dieser Browser unterstützt keine MSE/FLV-Hardwaredekodierung';
+    }
+  <\/script>
+</body>
+</html>`;
+
+    const blob = new Blob([playerHtml], { type: 'text/html;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, winName, winSpecs);
+  };
+
+  window.promptOpenTacticalPopout = function() {
+    const lastUrl = localStorage.getItem('hamster_custom_stream_url') || '';
+    const input = prompt('Bitte vollständige Live-Stream-URL zur Videoüberwachung eingeben:', lastUrl);
+    if (input !== null && input.trim() !== '') {
+      localStorage.setItem('hamster_custom_stream_url', input.trim());
+      openTacticalStreamWindow(input.trim());
+    }
+  };
+
+  // ============================================================================
+  // 1. Karteninitialisierung & Kartenebenen-Auswahl (oben rechts)
+  // ============================================================================
+  const map = L.map('map', { maxZoom: 22 }).setView([25.002, 121.533], 16);
+
+ function adjustMapHeight() {
+    const topbar = document.getElementById('topbar');
+    const mapEl = document.getElementById('map');
+    if (topbar && mapEl) {
+      const topbarHeight = topbar.offsetHeight;
+      mapEl.style.height = `calc(100% - ${topbarHeight}px)`;
+      map.invalidateSize();
+      setTimeout(() => map.invalidateSize(), 150);
+    }
+  }
+  window.addEventListener('resize', adjustMapHeight);
+  if (window.ResizeObserver) {
+    new ResizeObserver(adjustMapHeight).observe(document.getElementById('topbar'));
+  }
+
+  const googleHybrid = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+    minZoom: 0, maxZoom: 22, maxNativeZoom: 20, attribution: '© Google Hybrid'
+  }).addTo(map);
+
+  const twHappyman = L.tileLayer('https://tile.happyman.idv.tw/map/rudy/{z}/{x}/{y}.png', {
+    minZoom: 1, maxZoom: 22, maxNativeZoom: 18, attribution: '© Taiwan Topo (Rudy)'
+  });
+
+  const cycleOsm = L.tileLayer('https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', {
+    minZoom: 0, maxZoom: 22, maxNativeZoom: 20, attribution: '© CycleOSM'
+  });
+
+  const aviationEnroute = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Specialty/World_Navigation_Charts/MapServer/tile/{z}/{y}/{x}', {
+    minZoom: 3, maxNativeZoom: 12, maxZoom: 22, attribution: '© Esri Aviation Enroute'
+  });
+
+  const googleRoadmap = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+    minZoom: 0, maxZoom: 22, maxNativeZoom: 20, attribution: '© Google Straßenkarte'
+  });
+
+  const googleSat = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+    minZoom: 0, maxZoom: 22, maxNativeZoom: 20, attribution: '© Google Satellit'
+  });
+
+  const openTopo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    subdomains: ['a', 'b', 'c'], minZoom: 1, maxZoom: 22, maxNativeZoom: 17, attribution: '© OpenTopoMap'
+  });
+
+  const nlscEMap = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
+    maxZoom: 22, maxNativeZoom: 19, attribution: '© NLSC Taiwan'
+  });
+  const nlscPhoto = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}', {
+    maxZoom: 22, maxNativeZoom: 19, attribution: '© NLSC Orthofoto'
+  });
+
+  const mgrsGridGroup = L.layerGroup().addTo(map);
+
+  const baseMaps = {
+    "🛰️ Google Hybrid (Satellit + Straßen)": googleHybrid,
+    "⛰️ Taiwan Topo (Rudy-Geländekarte)": twHappyman,
+    "🚴 Cycle OSM (Topografisch / Wege)": cycleOsm,
+    "✈️ Luftfahrt-Streckenkarte (Aviation)": aviationEnroute,
+    "🗺️ Google Straßenkarte (Standard)": googleRoadmap,
+    "🌎 Google Satellit (Reinbild)": googleSat,
+    "🧭 OpenTopoMap (Höhenlinien)": openTopo,
+    "🇹🇼 NLSC Elektronische Karte": nlscEMap,
+    "📷 NLSC Luftbild (Orthofoto)": nlscPhoto
+  };
+
+  const overlayMaps = {
+    "🟦 MGRS-Koordinatengitter (Auto-Zoom)": mgrsGridGroup
+  };
+
+  L.control.layers(baseMaps, overlayMaps, { position: 'topright' }).addTo(map);
+
+  // ============================================================================
+  // Objektübersicht (Feature Summary Control) unterhalb der Ebenenauswahl
+  // ============================================================================
+  const FeatureSummaryControl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd: function() {
+      const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control feature-summary-control');
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.disableScrollPropagation(container);
+
+      container.innerHTML = `
+        <div class="feature-summary-btn" onclick="toggleFeatureSummaryPanel()" title="Objektübersicht (Alle Punkte & Formen)">
+          📋
+          <span class="feature-summary-badge" id="feature-summary-count">0</span>
+        </div>
+        <div id="feature-summary-panel">
+          <div class="fsp-header">
+            <span id="fsp-header-title">📋 Objektübersicht (0)</span>
+            <button class="fsp-close" onclick="toggleFeatureSummaryPanel()" title="Schließen">✕</button>
+          </div>
+          <div id="fsp-list"></div>
+        </div>
+      `;
+      return container;
+    }
+  });
+  map.addControl(new FeatureSummaryControl());
+
+  window.toggleFeatureSummaryPanel = function() {
+    const panel = document.getElementById('feature-summary-panel');
+    if (!panel) return;
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) {
+      renderFeatureSummaryList();
+    }
+  };
+
+  window.focusFeatureFromSummary = function(leafletId) {
+    const layer = drawnItems.getLayer(leafletId);
+    if (!layer) return;
+    if (typeof layer.getLatLng === 'function') {
+      map.setView(layer.getLatLng(), Math.max(map.getZoom(), 17), { animate: true });
+    } else if (typeof layer.getBounds === 'function' && layer.getBounds().isValid()) {
+      map.fitBounds(layer.getBounds(), { maxZoom: 17, padding: [50, 50], animate: true });
+    }
+    setTimeout(() => {
+      layer.openPopup();
+    }, 250);
+  };
+
+  function renderFeatureSummaryList() {
+    const countBadge = document.getElementById('feature-summary-count');
+    const headerTitle = document.getElementById('fsp-header-title');
+    const listEl = document.getElementById('fsp-list');
+    if (!countBadge || !listEl) return;
+
+    const layers = [];
+    drawnItems.eachLayer(layer => {
+      if (map.hasLayer(layer) && layer.feature && (layer instanceof L.Marker || layer instanceof L.Path)) {
+        layers.push(layer);
+      }
+    });
+
+    countBadge.innerText = layers.length;
+    headerTitle.innerText = `📋 Objektübersicht (${layers.length})`;
+
+    if (layers.length === 0) {
+      listEl.innerHTML = `<div style="color:#94a3b8; text-align:center; padding:24px 10px; font-size:12px;">Derzeit sind keine Punkte oder Formen auf der Karte markiert.</div>`;
+      return;
+    }
+
+    listEl.innerHTML = layers.map(layer => {
+      const props = (layer.feature && layer.feature.properties) ? layer.feature.properties : {};
+      const cat = props.category || 'danger';
+      const cfg = categoryConfig[cat] || categoryConfig.danger;
+      const layerId = L.stamp(layer);
+
+      let shapeType = '📍 Punkt';
+      if (layer instanceof L.Polygon) shapeType = '⬠ Fläche / Zone';
+      else if (layer instanceof L.Polyline) shapeType = '📏 Linie / Route';
+
+      const streamBtnHtml = props.stream ? `
+        <button class="popup-btn popup-btn-video" onclick="openTacticalStreamWindow('${escapeHTML(props.stream)}')">🎥 Live-Stream</button>
+      ` : '';
+
+      const editButtonsHtml = isTokenVerified ? `
+        <button class="popup-btn popup-btn-edit" onclick="openEditModal(${layerId})">✏️ Bearbeiten / MGRS</button>
+        <button class="popup-btn popup-btn-del" onclick="deleteLayerById(${layerId})">🗑️ Löschen</button>
+      ` : '';
+
+      return `
+        <div class="fsp-card" style="border-left-color: ${cfg.webColor};">
+          <div class="fsp-card-title" onclick="focusFeatureFromSummary(${layerId})" title="Klicken, um zur Position zu springen und Details zu öffnen">
+            <span>${escapeHTML(props.name || 'Unbenanntes Objekt')}</span>
+            <span class="fsp-type-tag">${shapeType}</span>
+          </div>
+          <div style="color:#cbd5e1; font-size:12px; font-weight:600; margin-top:3px;">${cfg.label}</div>
+          <hr style="border:0; border-top:1px solid #334155; margin:6px 0;">
+          <div style="white-space:pre-wrap; color:#e2e8f0; font-size:12px; line-height:1.4;">${escapeHTML(props.desc || 'Keine Bemerkungen')}</div>
+          ${props.stream ? `<div style="margin-top:4px; font-size:11px; color:#34d399; font-weight:bold; word-break:break-all;">🎥 Stream: ${escapeHTML(props.stream)}</div>` : ''}
+          <div style="margin-top:6px; font-size:11px; color:#38bdf8; font-family:monospace; font-weight:bold;">Koord.: ${escapeHTML(props.coord || '')}</div>
+          <div style="margin-top:2px; font-size:11px; color:#94a3b8;">Stand: ${escapeHTML(props.time || '')}</div>
+          <div class="popup-btn-group">
+            <button class="popup-btn popup-btn-focus" onclick="focusFeatureFromSummary(${layerId})">🎯 Zentrieren</button>
+            ${streamBtnHtml}
+            ${editButtonsHtml}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // ============================================================================
+  // 2. MGRS-Koordinatenberechnung & Dynamisches Kartengitter
+  // ============================================================================
+  let currentGridStepText = '100m';
+  let lastMouseLatLng = null;
+
+  function toFormattedMGRS(lat, lng) {
+    try {
+      if (typeof mgrs !== 'undefined') {
+        const raw = mgrs.forward([lng, lat], 5);
+        return raw.replace(/^(\d+[A-Z])([A-Z]{2})(\d{5})(\d{5})$/, '$1 $2 $3 $4');
+      }
+    } catch (e) {}
+    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  }
+
+  function parseMGRS(mgrsRaw) {
+    const m = mgrsRaw.match(/^(\d+[A-Z])([A-Z]{2})(\d{5})(\d{5})$/);
+    if (!m) return null;
+    return { gzd: m[1], sq: m[2], e: parseInt(m[3], 10), n: parseInt(m[4], 10) };
+  }
+
+  function updateMGRSGrid() {
+    mgrsGridGroup.clearLayers();
+    if (!map.hasLayer(mgrsGridGroup) || typeof mgrs === 'undefined') return;
+
+    const zoom = map.getZoom();
+    let step = 0;
+
+    if (zoom >= 16) { step = 100; currentGridStepText = '100m'; }
+    else if (zoom >= 13) { step = 1000; currentGridStepText = '1km'; }
+    else if (zoom >= 10) { step = 10000; currentGridStepText = '10km'; }
+    else { currentGridStepText = 'Aus'; updateCoordBarText(); return; }
+
+    updateCoordBarText();
+
+    const bounds = map.getBounds();
+    const sw = bounds.getSouthWest(), ne = bounds.getNorthEast(), nw = bounds.getNorthWest(), se = bounds.getSouthEast();
+    const center = map.getCenter();
+    const centerParsed = parseMGRS(mgrs.forward([center.lng, center.lat], 5));
+    if (!centerParsed) return;
+
+    const zonesMap = new Map();
+    [center, sw, ne, nw, se].forEach(pt => {
+      try {
+        const p = parseMGRS(mgrs.forward([pt.lng, pt.lat], 5));
+        if (p) zonesMap.set(`${p.gzd}${p.sq}`, p);
+      } catch (e) {}
+    });
+
+    zonesMap.forEach((zoneInfo) => {
+      const prefix = `${zoneInfo.gzd}${zoneInfo.sq}`;
+      let minE = 99999, maxE = 0, minN = 99999, maxN = 0;
+      [sw, ne, nw, se, center].forEach(pt => {
+        try {
+          const p = parseMGRS(mgrs.forward([pt.lng, pt.lat], 5));
+          if (p && `${p.gzd}${p.sq}` === prefix) {
+            if (p.e < minE) minE = p.e;
+            if (p.e > maxE) maxE = p.e;
+            if (p.n < minN) minN = p.n;
+            if (p.n > maxN) maxN = p.n;
+          }
+        } catch (e) {}
+      });
+
+      if (minE > maxE) return;
+
+      const startE = Math.max(0, Math.floor(minE / step) * step - step * 2);
+      const endE   = Math.min(100000 - step, Math.ceil(maxE / step) * step + step * 2);
+      const startN = Math.max(0, Math.floor(minN / step) * step - step * 2);
+      const endN   = Math.min(100000 - step, Math.ceil(maxN / step) * step + step * 2);
+
+      if ((endE - startE) / step > 65 || (endN - startN) / step > 65) return;
+
+      function mgrsToLatLng(eVal, nVal) {
+        const eClamped = Math.min(99999, Math.max(0, Math.round(eVal)));
+        const nClamped = Math.min(99999, Math.max(0, Math.round(nVal)));
+        const pt = mgrs.toPoint(`${prefix}${String(eClamped).padStart(5, '0')}${String(nClamped).padStart(5, '0')}`);
+        return [pt[1], pt[0]];
+      }
+
+      function formatGridLabel(val) {
+        const s = String(val).padStart(5, '0');
+        if (step === 100) return s;
+        if (step === 1000) return s.slice(0, 2);
+        return s.slice(0, 1) + '0k';
+      }
+
+      for (let e = startE; e <= endE + step; e += step) {
+        if (e > 99999) continue;
+        try {
+          const p1 = mgrsToLatLng(e, startN), p2 = mgrsToLatLng(e, Math.min(99999, endN + step));
+          L.polyline([p1, p2], { color: '#2563eb', weight: 1.6, opacity: 0.75, interactive: false }).addTo(mgrsGridGroup);
+          const topLat = bounds.getNorth() - (bounds.getNorth() - bounds.getSouth()) * 0.06;
+          const lonAtLine = p1[1] + (p2[1] - p1[1]) * 0.5;
+          if (lonAtLine >= bounds.getWest() && lonAtLine <= bounds.getEast()) {
+            L.marker([topLat, lonAtLine], {
+              interactive: false,
+              icon: L.divIcon({ className: '', html: `<span class="mgrs-grid-label">${formatGridLabel(e)}</span>`, iconAnchor: [22, 10] })
+            }).addTo(mgrsGridGroup);
+          }
+        } catch (err) {}
+      }
+
+      for (let n = startN; n <= endN + step; n += step) {
+        if (n > 99999) continue;
+        try {
+          const p1 = mgrsToLatLng(startE, n), p2 = mgrsToLatLng(Math.min(99999, endE + step), n);
+          L.polyline([p1, p2], { color: '#2563eb', weight: 1.6, opacity: 0.75, interactive: false }).addTo(mgrsGridGroup);
+          const leftLng = bounds.getWest() + (bounds.getEast() - bounds.getWest()) * 0.04;
+          const latAtLine = p1[0] + (p2[0] - p1[0]) * 0.5;
+          if (latAtLine >= bounds.getSouth() && latAtLine <= bounds.getNorth()) {
+            L.marker([latAtLine, leftLng], {
+              interactive: false,
+              icon: L.divIcon({ className: '', html: `<span class="mgrs-grid-label">${formatGridLabel(n)}</span>`, iconAnchor: [0, 10] })
+            }).addTo(mgrsGridGroup);
+          }
+        } catch (err) {}
+      }
+    });
+  }
+
+  map.on('moveend zoomend overlayadd overlayremove', updateMGRSGrid);
+
+  function updateCoordBarText() {
+    const bar = document.getElementById('coord-bar');
+    const pt = lastMouseLatLng || map.getCenter();
+    const mgrsStr = toFormattedMGRS(pt.lat, pt.lng);
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {
+      bar.innerText = `🎯 ${mgrsStr} (${pt.lat.toFixed(4)}, ${pt.lng.toFixed(4)}) [${currentGridStepText}]`;
+    } else {
+      bar.innerText = `🎯 MGRS: ${mgrsStr} ｜ WGS84: ${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)} ｜ 🟦 Gitter: ${currentGridStepText}`;
+    }
+  }
+
+  map.on('mousemove', (e) => { lastMouseLatLng = e.latlng; updateCoordBarText(); });
+  map.on('move', () => { if (window.innerWidth <= 768) { lastMouseLatLng = map.getCenter(); updateCoordBarText(); } });
+
+  function getLayerRepresentativeLatLng(layer) {
+    if (typeof layer.getLatLng === 'function') return layer.getLatLng();
+    if (typeof layer.getBounds === 'function' && layer.getBounds().isValid()) return layer.getBounds().getCenter();
+    return null;
+  }
+
+  function getLayerMGRSOnly(layer) {
+    const latlng = getLayerRepresentativeLatLng(layer);
+    if (!latlng) return '';
+    return toFormattedMGRS(latlng.lat, latlng.lng);
+  }
+
+  function getLayerCoordString(layer) {
+    const latlng = getLayerRepresentativeLatLng(layer);
+    if (!latlng) return 'Unbekannte Koordinate';
+    return `${toFormattedMGRS(latlng.lat, latlng.lng)} (${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)})`;
+  }
+
+  function offsetLatLngsRecursive(latlngs, dLat, dLng) {
+    if (!Array.isArray(latlngs)) return latlngs;
+    return latlngs.map(item => {
+      if (Array.isArray(item)) return offsetLatLngsRecursive(item, dLat, dLng);
+      if (item && typeof item.lat === 'number' && typeof item.lng === 'number') {
+        return L.latLng(item.lat + dLat, item.lng + dLng);
+      }
+      return item;
+    });
+  }
+
+  // ============================================================================
+  // 3. ATAK-Tropfensymbol (`google_pin.png`) & Taktische Kategorien
+  // ============================================================================
+  function generateATAKWaterdropBase64() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 96;
+    const ctx = canvas.getContext('2d');
+    ctx.beginPath();
+    ctx.moveTo(32, 92);
+    ctx.bezierCurveTo(30, 82, 18, 72, 18, 61);
+    ctx.arc(32, 61, 14, Math.PI, 0, false);
+    ctx.bezierCurveTo(46, 72, 34, 82, 32, 92);
+    ctx.closePath();
+    ctx.fillStyle = '#ffffff'; ctx.fill();
+    ctx.lineWidth = 2.8; ctx.strokeStyle = '#0f172a'; ctx.lineJoin = 'round'; ctx.stroke();
+    return canvas.toDataURL('image/png').split(',')[1];
+  }
+
+  const ATAK_WATERDROP_RAW_BASE64 = generateATAKWaterdropBase64();
+
+  const categoryConfig = {
+    danger: { label: '🔴 Gefahrenzone / Sperrgebiet', webColor: '#ef4444', kmlColor: 'ff0000ff', kmlPolyColor: '660000ff' },
+    rescue: { label: '🟡 Rettungspunkt / Suchgebiet', webColor: '#eab308', kmlColor: 'ff00ffff', kmlPolyColor: '6600ffff' },
+    supply: { label: '🟢 Versorgungspunkt / Sicherheitszone', webColor: '#22c55e', kmlColor: 'ff00ff00', kmlPolyColor: '6600ff00' },
+    friendly: { label: '🔵 Eigene Kräfte / Gefechtsstand', webColor: '#3b82f6', kmlColor: 'ffff0000', kmlPolyColor: '66ff0000' }
+  };
+
+  function createCoTDotIcon(cat) {
+    const cfg = categoryConfig[cat] || categoryConfig.danger;
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="33" height="33">
+        <circle cx="18" cy="18" r="13.5" fill="${cfg.webColor}" stroke="#000000" stroke-width="2.5"/>
+        <circle cx="18" cy="18" r="10.5" fill="none" stroke="#ffffff" stroke-width="2"/>
+        <circle cx="18" cy="18" r="3" fill="#ffffff"/>
+      </svg>`;
+    return L.divIcon({
+      className: 'custom-cot-icon', html: svg,
+      iconSize: [33, 33], iconAnchor: [16.5, 16.5], popupAnchor: [0, -16.5]
+    });
+  }
+
+  // ============================================================================
+  // 4. Strenge Einsatzprüfung & Einsatzverwaltung (inkl. Zweistufiger Sicherheitsabfrage)
+  // ============================================================================
+  async function checkMissionExistsOnCloud(code) {
+    const owner = document.getElementById('gh-owner').value.trim() || 'HamsterTAK';
+    const repo = document.getElementById('gh-repo').value.trim() || 'Heenisteininu';
+    const token = document.getElementById('gh-token').value.trim();
+
+    try {
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const apiRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/missions/${code}/data.geojson?t=${Date.now()}`, { headers });
+      if (apiRes.ok) return true;
+      if (apiRes.status === 404) return false;
+    } catch (e) {}
+
+    try {
+      const pageRes = await fetch(`./missions/${code}/data.geojson?t=${Date.now()}`);
+      return pageRes.ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  window.enterMissionFromLogin = async function() {
+    const rawCode = document.getElementById('login-mission-code').value;
+    const code = sanitizeMissionCode(rawCode);
+    if (!code) {
+      alert('Bitte einen gültigen Einsatzcode (Mission Code) eingeben, z. B. wenshan-01!');
+      document.getElementById('login-mission-code').focus();
+      return;
+    }
+
+    const tokenInput = document.getElementById('login-token').value.trim();
+    const callsignInput = document.getElementById('login-callsign').value.trim();
+
+    document.getElementById('gh-token').value = tokenInput;
+    if (tokenInput) localStorage.setItem('rescue_gh_token', tokenInput);
+    if (callsignInput) {
+      document.getElementById('user-callsign').value = callsignInput;
+      localStorage.setItem('rescue_callsign', callsignInput);
+    }
+
+    const submitBtn = document.getElementById('btn-login-submit');
+    submitBtn.innerText = '⏳ Prüfe Einsatz & Berechtigung...';
+    submitBtn.disabled = true;
+
+    try {
+      const hasValidToken = await verifyGitHubToken();
+      const missionExists = await checkMissionExistsOnCloud(code);
+
+      if (!missionExists) {
+        if (!hasValidToken) {
+          alert(`❌ Einsatz 【${code}】 nicht gefunden!\n\nUm unbefugtes Erstellen leerer Ordner zu verhindern, können nur Führungsoffiziere mit gültigem GitHub-Token neue Einsätze anlegen.\nBitte Einsatzcode auf Tippfehler prüfen.`);
+          return;
+        }
+
+        if (!confirm(`🆕 Einsatz 【${code}】 existiert noch nicht in der Cloud.\n\nToken-Authentifizierung erfolgreich. Möchten Sie den neuen Einsatz 【${code}】 jetzt initialisieren?`)) {
+          return;
+        }
+
+        await initializeNewMissionOnCloud(code);
+      }
+
+      await activateMission(code);
+    } finally {
+      submitBtn.innerText = '🚀 Authentifizieren & Einsatz beitreten';
+      submitBtn.disabled = false;
+    }
+  };
+
+  async function initializeNewMissionOnCloud(code) {
+    const token = document.getElementById('gh-token').value.trim();
+    const owner = document.getElementById('gh-owner').value.trim() || 'HamsterTAK';
+    const repo = document.getElementById('gh-repo').value.trim() || 'Heenisteininu';
+    const callsign = getCurrentCallsign();
+    const timeStr = new Date().toLocaleString('de-DE', { hour12: false });
+
+    const emptyGeoJSON = JSON.stringify({ type: 'FeatureCollection', features: [] }, null, 2);
+    const initLogs = JSON.stringify([{
+      time: timeStr,
+      user: callsign,
+      type: 'action',
+      text: `Hat die neue Einsatzdatenbank 【${code}】 initialisiert`
+    }], null, 2);
+
+    currentMissionCode = code;
+    const emptyKML = generateKML({ type: 'FeatureCollection', features: [] });
+
+    await putGitHubFile(owner, repo, getMissionFilePath('data.geojson', code), emptyGeoJSON, token, `[${code}] Einsatzdatenbank erstellt`);
+    await putGitHubFile(owner, repo, getMissionFilePath('live.kml', code), emptyKML, token, `[${code}] Einsatz-KML erstellt`);
+    await putGitHubFile(owner, repo, getMissionFilePath('logs.json', code), initLogs, token, `[${code}] Einsatztagebuch erstellt`);
+  }
+
+  window.loadMissionDirectoryList = async function() {
+    const tokenInput = document.getElementById('login-token').value.trim() || document.getElementById('gh-token').value.trim();
+    if (tokenInput) {
+      document.getElementById('gh-token').value = tokenInput;
+      localStorage.setItem('rescue_gh_token', tokenInput);
+    }
+
+    const hasValidToken = await verifyGitHubToken();
+    if (!hasValidToken) {
+      alert('🔒 Bitte zuerst oben einen gültigen GitHub-Token eingeben, um Einsatzordner in der Cloud zu scannen und zu verwalten!');
+      return;
+    }
+
+    const owner = document.getElementById('gh-owner').value.trim() || 'HamsterTAK';
+    const repo = document.getElementById('gh-repo').value.trim() || 'Heenisteininu';
+    const token = document.getElementById('gh-token').value.trim();
+    const box = document.getElementById('mission-manager-box');
+    const listEl = document.getElementById('mission-manager-list');
+    const countEl = document.getElementById('mm-count');
+
+    box.style.display = 'block';
+    listEl.innerHTML = `<div style="color:#94a3b8; font-size:12px; padding:8px;">⏳ Scanne Verzeichnis missions/ auf GitHub...</div>`;
+
+    try {
+      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/missions?t=${Date.now()}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (res.status === 404) {
+        countEl.innerText = '0 Einsätze';
+        listEl.innerHTML = `<div style="color:#94a3b8; font-size:12px; padding:8px;">Derzeit keine Einsatzordner in der Cloud vorhanden</div>`;
+        return;
+      }
+
+      const items = await res.json();
+      const dirs = Array.isArray(items) ? items.filter(i => i.type === 'dir') : [];
+      countEl.innerText = `Gesamt: ${dirs.length}`;
+
+      if (dirs.length === 0) {
+        listEl.innerHTML = `<div style="color:#94a3b8; font-size:12px; padding:8px;">Derzeit keine Einsatzordner in der Cloud vorhanden</div>`;
+        return;
+      }
+
+      listEl.innerHTML = dirs.map(d => {
+        const mCode = escapeHTML(d.name);
+        return `
+          <div class="mm-item">
+            <strong>🎯 ${mCode}</strong>
+            <div class="mm-actions">
+              <button class="mm-btn mm-btn-go" onclick="quickEnterMission('${mCode}')">🚀 Beitreten</button>
+              <button class="mm-btn mm-btn-kml" onclick="copyMissionKmlUrl('${mCode}')" title="ATAK-KML-URL für diesen Einsatz kopieren">📋 KML-URL</button>
+              <button class="mm-btn mm-btn-del" onclick="deleteMissionByCode('${mCode}')" title="Einsatzordner unwiderruflich löschen">🗑️ Löschen</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      listEl.innerHTML = `<div style="color:#ef4444; font-size:12px;">Scan fehlgeschlagen: ${escapeHTML(err.message)}</div>`;
+    }
+  };
+
+  window.quickEnterMission = function(code) {
+    document.getElementById('login-mission-code').value = code;
+    enterMissionFromLogin();
+  };
+
+  window.copyMissionKmlUrl = function(code) {
+    const owner = document.getElementById('gh-owner').value.trim() || 'HamsterTAK';
+    const repo = document.getElementById('gh-repo').value.trim() || 'Heenisteininu';
+    const url = `https://${owner}.github.io/${repo}/missions/${code}/live.kml`;
+    navigator.clipboard.writeText(url).then(() => {
+      alert(`✅ ATAK-Abo-URL für Einsatz 【${code}】 kopiert:\n${url}`);
+    });
+  };
+
+  window.openMissionManagerModal = async function() {
+    const exited = await switchMissionPrompt();
+    if (exited) {
+      loadMissionDirectoryList();
+    }
+  };
+
+  async function activateMission(code) {
+    currentMissionCode = sanitizeMissionCode(code);
+    localStorage.setItem('hamster_last_mission', currentMissionCode);
+
+    const newUrl = `${window.location.pathname}?mission=${encodeURIComponent(currentMissionCode)}`;
+    window.history.replaceState({}, '', newUrl);
+
+    document.getElementById('current-mission-label').innerText = currentMissionCode;
+    document.getElementById('mission-login-overlay').style.display = 'none';
+    adjustMapHeight();
+
+    drawnItems.clearLayers();
+    undoStack = [];
+    tacticalLogs = [];
+    cleanAndRefreshUndoUI();
+    renderFeatureSummaryList();
+
+    setSystemStatus(`Lade [${currentMissionCode}]...`, 'busy');
+
+    await loadExistingData();
+    await verifyGitHubToken();
+  }
+
+  // Zweistufige Sicherheitsabfrage beim Verlassen / Einsatzwechsel
+  window.switchMissionPrompt = async function() {
+    if (currentMissionCode) {
+      const wantExit = confirm(`⚠️ Möchten Sie den aktuellen Einsatz 【${currentMissionCode}】 wirklich verlassen und zur Einsatzverwaltung zurückkehren?`);
+      if (!wantExit) return false;
+
+      if (isTokenVerified) {
+        const wantSave = confirm(`💾 Möchten Sie vor dem Verlassen die aktuellen Änderungen für Einsatz 【${currentMissionCode}】 speichern und senden?\n\n(OK = Speichern & Verlassen; Abbrechen = Ohne Speichern verlassen)`);
+        if (wantSave) {
+          await publishToGitHub();
+        }
+      }
+    }
+
+    document.getElementById('login-mission-code').value = currentMissionCode;
+    document.getElementById('login-token').value = document.getElementById('gh-token').value;
+    document.getElementById('login-callsign').value = document.getElementById('user-callsign').value;
+    document.getElementById('mission-login-overlay').style.display = 'flex';
+    document.getElementById('login-mission-code').select();
+    return true;
+  };
+
+  window.deleteMissionByCode = async function(targetCode) {
+    if (!isTokenVerified || !targetCode) {
+      alert('Sie benötigen einen gültigen GitHub-Token, um einen Einsatz zu löschen!');
+      return;
+    }
+
+    const confirmCode = prompt(
+      `⚠️ SICHERHEITSWARNUNG!\nSie sind dabei, den Einsatz 【${targetCode}】 inklusive aller Kartendaten, KML-Dateien und Tagebucheinträge dauerhaft aus der GitHub-Cloud zu löschen!\n\nBitte geben Sie zur Bestätigung den Einsatzcode „${targetCode}“ ein:`
+    );
+    if (confirmCode !== targetCode) {
+      if (confirmCode !== null) alert('Einsatzcode stimmt nicht überein. Löschvorgang abgebrochen.');
+      return;
+    }
+
+    const token = document.getElementById('gh-token').value.trim();
+    const owner = document.getElementById('gh-owner').value.trim() || 'HamsterTAK';
+    const repo = document.getElementById('gh-repo').value.trim() || 'Heenisteininu';
+    setSystemStatus(`Lösche [${targetCode}]...`, 'busy');
+
+    try {
+      const dirUrl = `https://api.github.com/repos/${owner}/${repo}/contents/missions/${targetCode}?t=${Date.now()}`;
+      const dirRes = await fetch(dirUrl, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (dirRes.ok) {
+        const files = await dirRes.json();
+        if (Array.isArray(files)) {
+          for (const fileObj of files) {
+            await deleteGitHubFileIfExist(owner, repo, fileObj.path, token, `Einsatz ${targetCode} Datei gelöscht (${fileObj.name})`);
+          }
+        }
+      }
+
+      alert(`✅ Einsatzordner 【${targetCode}】 wurde vollständig aus der Cloud gelöscht!`);
+      if (currentMissionCode === targetCode) {
+        localStorage.removeItem('hamster_last_mission');
+        currentMissionCode = '';
+        document.getElementById('login-mission-code').value = '';
+        document.getElementById('mission-login-overlay').style.display = 'flex';
+        setSystemStatus('Einsatzbereit', 'ok');
+      }
+      if (document.getElementById('mission-manager-box').style.display === 'block') {
+        loadMissionDirectoryList();
+      }
+    } catch (err) {
+      setSystemStatus('Löschen fehlgeschlagen', 'error');
+      alert('Fehler beim Löschen des Einsatzes: ' + err.message);
+    }
+  };
+
+  // ============================================================================
+  // 5. Einsatztagebuch (Log) & Token-Authentifizierung
+  // ============================================================================
+  let tacticalLogs = [];
+
+  window.toggleLogPanel = function() {
+    const panel = document.getElementById('log-panel');
+    const icon = document.getElementById('log-toggle-icon');
+    panel.classList.toggle('collapsed');
+    const isCollapsed = panel.classList.contains('collapsed');
+    icon.innerText = isCollapsed ? '▲ Öffnen' : '▼ Schließen';
+    if (!isCollapsed && isTokenVerified) {
+      const listEl = document.getElementById('log-list');
+      listEl.scrollTop = listEl.scrollHeight;
+    }
+  };
+
+  function getCurrentCallsign() {
+    return document.getElementById('user-callsign').value.trim() || 'Unbekannter Offizier';
+  }
+
+  async function verifyGitHubToken() {
+    const token = document.getElementById('gh-token').value.trim();
+    const owner = document.getElementById('gh-owner').value.trim() || 'HamsterTAK';
+    const repo = document.getElementById('gh-repo').value.trim() || 'Heenisteininu';
+
+    if (!token || !owner || !repo) {
+      setEditorAndLogAuthStatus(false);
+      return false;
+    }
+
+    try {
+      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}?t=${Date.now()}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        setEditorAndLogAuthStatus(false);
+        return false;
+      }
+      const repoData = await res.json();
+      const canWrite = Boolean(repoData.permissions && (repoData.permissions.push || repoData.permissions.admin || repoData.permissions.maintain));
+      setEditorAndLogAuthStatus(canWrite);
+      if (canWrite) {
+        localStorage.setItem('rescue_gh_token', token);
+        await loadExistingLogs();
+      }
+      return canWrite;
+    } catch (e) {
+      setEditorAndLogAuthStatus(false);
+      return false;
+    }
+  }
+
+  function setEditorAndLogAuthStatus(verified) {
+    isTokenVerified = verified;
+    const lockIcon = document.getElementById('log-lock-icon');
+    const lockedMsg = document.getElementById('log-locked-msg');
+    const logList = document.getElementById('log-list');
+    const inputArea = document.getElementById('log-input-area');
+    const clearBtn = document.getElementById('btn-clear-logs');
+    const publishBtn = document.getElementById('btn-publish');
+    const topManageBtn = document.getElementById('btn-top-manage');
+    const delMissionBtn = document.getElementById('btn-delete-mission');
+
+    if (verified) {
+      document.body.classList.remove('readonly-mode');
+      publishBtn.style.display = 'inline-block';
+      topManageBtn.style.display = 'inline-block';
+      delMissionBtn.style.display = 'inline-block';
+      lockIcon.innerText = '📋';
+      lockedMsg.style.display = 'none';
+      logList.style.display = 'flex';
+      inputArea.style.display = 'flex';
+      clearBtn.style.display = 'inline-block';
+      renderLogList();
+    } else {
+      document.body.classList.add('readonly-mode');
+      publishBtn.style.display = 'none';
+      topManageBtn.style.display = 'none';
+      delMissionBtn.style.display = 'none';
+      lockIcon.innerText = '🔒';
+      lockedMsg.style.display = 'flex';
+      logList.style.display = 'none';
+      inputArea.style.display = 'none';
+      clearBtn.style.display = 'none';
+      document.getElementById('log-title-text').innerText = 'Einsatztagebuch (Schreibgeschützt)';
+    }
+    adjustMapHeight();
+    drawnItems.eachLayer(layer => {
+      if (layer.feature) applyFeatureProperties(layer, layer.feature.properties || {});
+    });
+    renderFeatureSummaryList();
+  }
+
+  function renderLogList() {
+    const titleEl = document.getElementById('log-title-text');
+    const listEl = document.getElementById('log-list');
+    titleEl.innerText = `Einsatztagebuch & Funk (${tacticalLogs.length})`;
+    if (!isTokenVerified) return;
+
+    if (tacticalLogs.length === 0) {
+      listEl.innerHTML = `<div style="color:#64748b; text-align:center; padding:20px 0;">Keine Einträge für Einsatz [${escapeHTML(currentMissionCode)}]</div>`;
+      return;
+    }
+
+    listEl.innerHTML = tacticalLogs.map(item => {
+      const cls = item.type === 'chat' ? 'log-chat' : 'log-action';
+      const badge = item.type === 'chat' ? '💬 Funk' : '🛠️ Aktion';
+      return `
+        <div class="log-item ${cls}">
+          <div class="log-meta">[${escapeHTML(item.time)}] ${badge} ｜ 👤 <strong>${escapeHTML(item.user)}</strong></div>
+          <div>${escapeHTML(item.text)}</div>
+        </div>
+      `;
+    }).join('');
+    listEl.scrollTop = listEl.scrollHeight;
+  }
+
+  function appendTacticalLog(type, text, autoSync = true) {
+    if (!isTokenVerified || !currentMissionCode) return;
+    const time = new Date().toLocaleString('de-DE', { hour12: false });
+    const user = getCurrentCallsign();
+    tacticalLogs.push({ time, user, type, text });
+    if (tacticalLogs.length > 200) tacticalLogs.shift();
+    renderLogList();
+    if (autoSync) syncLogsToGitHubSilent();
+  }
+
+  window.sendChatMessage = function() {
+    if (!isTokenVerified) return;
+    const inputEl = document.getElementById('log-input');
+    const msg = inputEl.value.trim();
+    if (!msg) return;
+    inputEl.value = '';
+    appendTacticalLog('chat', msg, true);
+  };
+
+  window.clearAllLogs = async function(e) {
+    e.stopPropagation();
+    if (!isTokenVerified) return;
+    if (!confirm(`⚠️ Möchten Sie wirklich alle Einträge und Funksprüche für Einsatz 【${currentMissionCode}】 unwiderruflich löschen?`)) return;
+    tacticalLogs = [];
+    renderLogList();
+    await syncLogsToGitHubSilent(`Tagebuch für Einsatz ${currentMissionCode} geleert`);
+    setSystemStatus(`Tagebuch geleert`, 'ok');
+  };
+
+  async function loadExistingLogs() {
+    if (!currentMissionCode) return;
+    try {
+      const owner = document.getElementById('gh-owner').value.trim();
+      const repo = document.getElementById('gh-repo').value.trim();
+      const token = document.getElementById('gh-token').value.trim();
+      if (!owner || !repo || !token) return;
+
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${getMissionFilePath('logs.json')}?t=${Date.now()}`;
+      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.content) {
+        const decoded = decodeURIComponent(escape(atob(json.content.replace(/\n/g, ''))));
+        const parsed = JSON.parse(decoded);
+        if (Array.isArray(parsed)) {
+          tacticalLogs = parsed;
+          renderLogList();
+        }
+      }
+    } catch (e) {}
+  }
+
+  let isSyncingLogs = false;
+  async function syncLogsToGitHubSilent(customMsg = null) {
+    if (!isTokenVerified || isSyncingLogs || !currentMissionCode) return;
+    const token = document.getElementById('gh-token').value.trim();
+    const owner = document.getElementById('gh-owner').value.trim();
+    const repo = document.getElementById('gh-repo').value.trim();
+    if (!token || !owner || !repo) return;
+
+    isSyncingLogs = true;
+    try {
+      const logsStr = JSON.stringify(tacticalLogs, null, 2);
+      const msg = customMsg || `Tagebuch aktualisiert: ${currentMissionCode} (${getCurrentCallsign()})`;
+      await putGitHubFile(owner, repo, getMissionFilePath('logs.json'), logsStr, token, msg);
+    } catch (e) {} finally {
+      isSyncingLogs = false;
+    }
+  }
+
+  ['gh-token', 'gh-owner', 'gh-repo'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => verifyGitHubToken());
+  });
+
+  // ============================================================================
+  // 6. Rückgängig-System (Undo) & Geoman-Werkzeugleiste
+  // ============================================================================
+  const drawnItems = new L.FeatureGroup().addTo(map);
+  const MAX_UNDO_STEPS = 10;
+  const UNDO_EXPIRE_MS = 5 * 60 * 1000;
+  let undoStack = [];
+
+  function cleanAndRefreshUndoUI() {
+    const now = Date.now();
+    undoStack = undoStack.filter(item => (now - item.timestamp) < UNDO_EXPIRE_MS);
+    const btnContainer = document.getElementById('pm-undo-container');
+    const badge = document.getElementById('pm-undo-badge');
+    if (btnContainer && badge) {
+      if (undoStack.length > 0) {
+        btnContainer.classList.remove('pm-undo-disabled');
+        badge.style.display = 'block';
+        badge.innerText = undoStack.length;
+      } else {
+        btnContainer.classList.add('pm-undo-disabled');
+        badge.style.display = 'none';
+      }
+    }
+  }
+  setInterval(cleanAndRefreshUndoUI, 1000);
+
+  function recordUndoSnapshot(extraRemovedLayer = null) {
+    cleanAndRefreshUndoUI();
+    const collection = collectGeoJSON();
+    if (extraRemovedLayer && extraRemovedLayer.feature && (extraRemovedLayer instanceof L.Marker || extraRemovedLayer instanceof L.Path)) {
+      extraRemovedLayer.feature.properties.coord = getLayerCoordString(extraRemovedLayer);
+      const gj = extraRemovedLayer.toGeoJSON();
+      gj.properties = extraRemovedLayer.feature.properties;
+      collection.features.push(gj);
+    }
+    const currentGeoJSONStr = JSON.stringify(collection);
+    if (undoStack.length > 0 && undoStack[undoStack.length - 1].geojsonStr === currentGeoJSONStr) return;
+    undoStack.push({ geojsonStr: currentGeoJSONStr, timestamp: Date.now() });
+    if (undoStack.length > MAX_UNDO_STEPS) undoStack.shift();
+    cleanAndRefreshUndoUI();
+  }
+
+  window.undoLastAction = function() {
+    if (!isTokenVerified) return;
+    cleanAndRefreshUndoUI();
+    if (undoStack.length === 0) return;
+    const lastSnapshot = undoStack.pop();
+    const geojson = JSON.parse(lastSnapshot.geojsonStr);
+    drawnItems.clearLayers();
+    L.geoJSON(geojson, {
+      onEachFeature: (feature, layer) => {
+        drawnItems.addLayer(layer);
+        applyFeatureProperties(layer, feature.properties || {});
+      }
+    });
+    cleanAndRefreshUndoUI();
+    renderFeatureSummaryList();
+    setSystemStatus(`Rückgängig (${undoStack.length})`, 'ok');
+    appendTacticalLog('action', `Hat den letzten Bearbeitungsschritt rückgängig gemacht (Undo)`);
+  };
+
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      const modalOpen = document.getElementById('modal-overlay').style.display === 'flex';
+      const loginOpen = document.getElementById('mission-login-overlay').style.display !== 'none';
+      const tag = document.activeElement ? document.activeElement.tagName : '';
+      if (!modalOpen && !loginOpen && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        e.preventDefault();
+        undoLastAction();
+      }
+    }
+  });
+
+  map.pm.addControls({
+    position: 'topleft',
+    drawMarker: true, drawPolyline: true, drawPolygon: true, drawRectangle: true,
+    drawCircle: false, drawCircleMarker: false, drawText: false,
+    editMode: true, dragMode: true, cutPolygon: false, removalMode: true, rotateMode: true
+  });
+
+  map.pm.Toolbar.createCustomControl({
+    name: 'UndoAction', block: 'edit',
+    title: 'Schritt rückgängig machen (max. 10 Schritte / 5 Min. / Strg+Z)',
+    toggle: false, onClick: () => undoLastAction(), afterClick: () => {},
+    className: 'leaflet-pm-icon-undo'
+  });
+
+  map.pm.Toolbar.createCustomControl({
+    name: 'FullscreenAction', block: 'custom',
+    title: 'Vollbildmodus umschalten',
+    toggle: false, onClick: () => toggleFullScreenMode(), afterClick: () => {},
+    className: 'leaflet-pm-icon-fullscreen'
+  });
+
+  map.pm.setLang('de');
+  injectCustomToolbarIcons();
+
+  window.toggleFullScreenMode = function() {
+    const docEl = document.documentElement;
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      if (docEl.requestFullscreen) docEl.requestFullscreen();
+      else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
+      else {
+        const topbar = document.getElementById('topbar');
+        topbar.style.display = topbar.style.display === 'none' ? 'flex' : 'none';
+        adjustMapHeight();
+      }
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
+  };
+
+  // ============================================================================
+  // 7. Objekte erstellen, bearbeiten, löschen & MGRS-Korrektur
+  // ============================================================================
+  let activeLayer = null;
+  let isEditingExisting = false;
+
+  map.on('pm:create', (e) => {
+    if (!isTokenVerified) {
+      map.removeLayer(e.layer);
+      alert('Lesemodus: Bitte zuerst einen gültigen GitHub-Token eingeben, um Objekte hinzuzufügen!');
+      return;
+    }
+    activeLayer = e.layer;
+    isEditingExisting = false;
+    document.getElementById('modal-title').innerText = '📍 Neues taktisches Objekt anlegen';
+    document.getElementById('modal-cancel-btn').innerText = 'Verwerfen';
+    document.getElementById('feat-name').value = '';
+    document.getElementById('feat-cat').value = 'danger';
+    document.getElementById('feat-mgrs').value = getLayerMGRSOnly(activeLayer);
+    document.getElementById('feat-desc').value = '';
+    document.getElementById('feat-stream').value = '';
+    document.getElementById('modal-overlay').style.display = 'flex';
+    document.getElementById('feat-name').focus();
+  });
+
+  map.on('pm:remove', (e) => {
+    drawnItems.removeLayer(e.layer);
+    recordUndoSnapshot(e.layer);
+    renderFeatureSummaryList();
+    const removedName = (e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.name) || 'Unbenanntes Objekt';
+    const removedCoord = getLayerCoordString(e.layer);
+    setSystemStatus(`Gelöscht: ${removedName}`, 'ok');
+    appendTacticalLog('action', `Objekt „${removedName}“ gelöscht (${removedCoord})`);
+  });
+
+  window.openEditModal = function(leafletId) {
+    if (!isTokenVerified) return;
+    const layer = drawnItems.getLayer(leafletId);
+    if (!layer) return;
+    layer.closePopup();
+
+    activeLayer = layer;
+    isEditingExisting = true;
+    const props = (layer.feature && layer.feature.properties) ? layer.feature.properties : {};
+
+    document.getElementById('modal-title').innerText = '✏️ Objekt, Farbe & MGRS-Koordinate bearbeiten';
+    document.getElementById('modal-cancel-btn').innerText = 'Abbrechen';
+    document.getElementById('feat-name').value = props.name || '';
+    document.getElementById('feat-cat').value = props.category || 'danger';
+    document.getElementById('feat-mgrs').value = getLayerMGRSOnly(layer);
+    document.getElementById('feat-desc').value = props.desc || '';
+    document.getElementById('feat-stream').value = props.stream || '';
+    document.getElementById('modal-overlay').style.display = 'flex';
+    document.getElementById('feat-name').focus();
+  };
+
+  window.deleteLayerById = function(leafletId) {
+    if (!isTokenVerified) return;
+    const layer = drawnItems.getLayer(leafletId);
+    if (!layer) return;
+    layer.closePopup();
+    const removedName = (layer.feature && layer.feature.properties && layer.feature.properties.name) || 'Unbenanntes Objekt';
+    const removedCoord = getLayerCoordString(layer);
+    recordUndoSnapshot();
+    map.removeLayer(layer);
+    drawnItems.removeLayer(layer);
+    renderFeatureSummaryList();
+    setSystemStatus(`Gelöscht: ${removedName}`, 'ok');
+    appendTacticalLog('action', `Objekt „${removedName}“ gelöscht (${removedCoord})`);
+  };
+
+  function cancelModal() {
+    if (activeLayer && !isEditingExisting) map.removeLayer(activeLayer);
+    activeLayer = null;
+    isEditingExisting = false;
+    document.getElementById('modal-overlay').style.display = 'none';
+  }
+
+  function saveModal() {
+    if (!activeLayer) return;
+
+    const mgrsInputRaw = document.getElementById('feat-mgrs').value.trim();
+    const originalMGRS = getLayerMGRSOnly(activeLayer);
+
+    if (mgrsInputRaw && mgrsInputRaw.replace(/\s+/g, '').toUpperCase() !== originalMGRS.replace(/\s+/g, '').toUpperCase()) {
+      const cleanMGRS = mgrsInputRaw.replace(/\s+/g, '').toUpperCase();
+      try {
+        const pt = mgrs.toPoint(cleanMGRS);
+        const newLat = pt[1];
+        const newLng = pt[0];
+        if (isNaN(newLat) || isNaN(newLng)) throw new Error('Ungültige Koordinaten');
+
+        recordUndoSnapshot();
+
+        if (typeof activeLayer.setLatLng === 'function') {
+          activeLayer.setLatLng([newLat, newLng]);
+        } else if (typeof activeLayer.getLatLngs === 'function' && typeof activeLayer.setLatLngs === 'function') {
+          const oldCenter = getLayerRepresentativeLatLng(activeLayer);
+          if (oldCenter) {
+            const dLat = newLat - oldCenter.lat;
+            const dLng = newLng - oldCenter.lng;
+            activeLayer.setLatLngs(offsetLatLngsRecursive(activeLayer.getLatLngs(), dLat, dLng));
+          }
+        }
+        map.panTo([newLat, newLng]);
+      } catch (err) {
+        alert('❌ Ungültiges MGRS-Koordinatenformat!\nBitte Standard-MGRS-Format eingeben, z. B.: 51R UH 51909 65861');
+        document.getElementById('feat-mgrs').focus();
+        return;
+      }
+    } else {
+      recordUndoSnapshot();
+    }
+
+    const name = document.getElementById('feat-name').value.trim() || 'Unbenanntes Objekt';
+    const cat = document.getElementById('feat-cat').value;
+    const desc = document.getElementById('feat-desc').value.trim();
+    const stream = document.getElementById('feat-stream').value.trim();
+    const callsign = document.getElementById('user-callsign').value.trim();
+    localStorage.setItem('rescue_callsign', callsign);
+
+    const rawTime = new Date().toLocaleString('de-DE', { hour12: false });
+    const time = callsign ? `${rawTime} (${callsign})` : rawTime;
+    const coord = getLayerCoordString(activeLayer);
+    const catLabel = (categoryConfig[cat] || categoryConfig.danger).label;
+
+    const wasEditing = isEditingExisting;
+    if (!drawnItems.hasLayer(activeLayer)) drawnItems.addLayer(activeLayer);
+
+    applyFeatureProperties(activeLayer, { name, category: cat, desc, stream, coord, time, updatedBy: callsign });
+
+    if (wasEditing) appendTacticalLog('action', `Objekt „${name}“ bearbeitet [${catLabel}] (${coord})`);
+    else appendTacticalLog('action', `Objekt „${name}“ erstellt [${catLabel}] (${coord})`);
+
+    activeLayer = null;
+    isEditingExisting = false;
+    document.getElementById('modal-overlay').style.display = 'none';
+  }
+
+  document.getElementById('user-callsign').addEventListener('change', (e) => {
+    localStorage.setItem('rescue_callsign', e.target.value.trim());
+  });
+
+  function applyFeatureProperties(layer, props) {
+    props.coord = getLayerCoordString(layer);
+    layer.feature = layer.feature || { type: 'Feature', properties: {} };
+    layer.feature.properties = props;
+
+    const cat = props.category || 'danger';
+    const cfg = categoryConfig[cat] || categoryConfig.danger;
+
+    if (layer instanceof L.Marker) layer.setIcon(createCoTDotIcon(cat));
+    else if (layer.setStyle) layer.setStyle({ color: cfg.webColor, fillColor: cfg.webColor, fillOpacity: 0.35, weight: 4 });
+
+    if (props.name) {
+      layer.unbindTooltip();
+      const isMarker = layer instanceof L.Marker;
+      layer.bindTooltip(escapeHTML(props.name), {
+        permanent: true, direction: 'top',
+        offset: isMarker ? [0, -18] : [0, 0],
+        className: 'map-persistent-label'
+      });
+    }
+
+    if (!layer._hasCoordUpdateListener) {
+      layer.on('pm:dragstart pm:markerdragstart pm:rotatestart', () => recordUndoSnapshot());
+      layer.on('pm:dragend pm:edit pm:rotateend', () => {
+        applyFeatureProperties(layer, layer.feature.properties);
+        const itemName = (layer.feature && layer.feature.properties && layer.feature.properties.name) || 'Objekt';
+        appendTacticalLog('action', `Position von „${itemName}“ verschoben nach ${layer.feature.properties.coord}`);
+      });
+      layer._hasCoordUpdateListener = true;
+    }
+
+    const layerId = L.stamp(layer);
+    const editButtonsHtml = isTokenVerified ? `
+      <button class="popup-btn popup-btn-edit" onclick="openEditModal(${layerId})">✏️ Bearbeiten / MGRS</button>
+      <button class="popup-btn popup-btn-del" onclick="deleteLayerById(${layerId})">🗑️ Löschen</button>
+    ` : `<div style="margin-top:6px; font-size:11px; color:#94a3b8;">🔒 Lesemodus (Token für Bearbeitung erforderlich)</div>`;
+
+    const streamBtnHtml = props.stream ? `
+      <button class="popup-btn popup-btn-video" onclick="openTacticalStreamWindow('${escapeHTML(props.stream)}')">🎥 Live-Stream öffnen</button>
+    ` : '';
+
+    layer.bindPopup(`
+      <div style="font-size:14px; min-width:230px;">
+        <strong style="font-size:15px;">${escapeHTML(props.name)}</strong><br>
+        <span style="color:#475569; font-size:12px; font-weight:600;">${cfg.label}</span>
+        <hr style="border:0; border-top:1px solid #e2e8f0; margin:6px 0;">
+        <div style="white-space:pre-wrap; color:#1e293b;">${escapeHTML(props.desc || 'Keine Bemerkungen')}</div>
+        ${props.stream ? `<div style="margin-top:4px; font-size:11px; color:#059669; font-weight:bold; word-break:break-all;">🎥 Stream: ${escapeHTML(props.stream)}</div>` : ''}
+        <div style="margin-top:8px; font-size:11px; color:#0284c7; font-family:monospace; font-weight:bold;">Koord.: ${escapeHTML(props.coord || '')}</div>
+        <div style="margin-top:2px; font-size:11px; color:#64748b;">Stand: ${escapeHTML(props.time || '')}</div>
+        <div class="popup-btn-group">
+          ${streamBtnHtml}
+          ${editButtonsHtml}
+        </div>
+      </div>
+    `);
+
+    renderFeatureSummaryList();
+  }
+
+  function escapeHTML(str) {
+    return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  }
+
+  // ============================================================================
+  // 8. Systemstart & Laden bestehender Einsatzdaten (Heenisteininu)
+  // ============================================================================
+  window.addEventListener('DOMContentLoaded', () => {
+    injectCustomToolbarIcons();
+
+    const host = window.location.hostname;
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    document.getElementById('gh-owner').value = 'HamsterTAK';
+    document.getElementById('gh-repo').value = (host.endsWith('github.io') && pathParts.length > 0) ? pathParts[0] : 'Heenisteininu';
+
+    const savedToken = localStorage.getItem('rescue_gh_token') || '';
+    const savedCallsign = localStorage.getItem('rescue_callsign') || '';
+    const savedMission = localStorage.getItem('hamster_last_mission') || '';
+
+    document.getElementById('gh-token').value = savedToken;
+    document.getElementById('login-token').value = savedToken;
+    document.getElementById('user-callsign').value = savedCallsign;
+    document.getElementById('login-callsign').value = savedCallsign;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryMission = sanitizeMissionCode(urlParams.get('mission') || '');
+    document.getElementById('login-mission-code').value = queryMission || savedMission;
+
+    updateMGRSGrid();
+    adjustMapHeight();
+    setTimeout(() => document.getElementById('login-mission-code').focus(), 150);
+  });
+
+  async function loadExistingData() {
+    if (!currentMissionCode) return;
+    const owner = document.getElementById('gh-owner').value.trim() || 'HamsterTAK';
+    const repo = document.getElementById('gh-repo').value.trim() || 'Heenisteininu';
+    const token = document.getElementById('gh-token').value.trim();
+
+    try {
+      let geojson = null;
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const apiRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${getMissionFilePath('data.geojson')}?t=${Date.now()}`, { headers });
+      if (apiRes.ok) {
+        const apiJson = await apiRes.json();
+        if (apiJson.content) {
+          const decoded = decodeURIComponent(escape(atob(apiJson.content.replace(/\n/g, ''))));
+          geojson = JSON.parse(decoded);
+        }
+      } else {
+        const pageRes = await fetch(`./${getMissionFilePath('data.geojson')}?t=${Date.now()}`);
+        if (pageRes.ok) geojson = await pageRes.json();
+      }
+
+      if (!geojson) {
+        renderFeatureSummaryList();
+        setSystemStatus(`Aktiv [${currentMissionCode}]`, 'ok');
+        return;
+      }
+
+      L.geoJSON(geojson, {
+        onEachFeature: (feature, layer) => {
+          drawnItems.addLayer(layer);
+          applyFeatureProperties(layer, feature.properties || {});
+        }
+      });
+      renderFeatureSummaryList();
+      if (drawnItems.getLayers().length > 0) {
+        map.fitBounds(drawnItems.getBounds(), { maxZoom: 17, padding: [40, 40] });
+      }
+      setSystemStatus(`Geladen [${currentMissionCode}]`, 'ok');
+    } catch (e) {
+      renderFeatureSummaryList();
+      setSystemStatus(`Bereit [${currentMissionCode}]`, 'ok');
+    }
+  }
+
+  // ============================================================================
+  // 9. KML-Generierung für ATAK (inkl. klickbarem Live-Stream-Link)
+  // ============================================================================
+  function collectGeoJSON() {
+    const collection = { type: 'FeatureCollection', features: [] };
+    drawnItems.eachLayer(layer => {
+      if (map.hasLayer(layer) && layer.feature && (layer instanceof L.Marker || layer instanceof L.Path)) {
+        layer.feature.properties.coord = getLayerCoordString(layer);
+        const gj = layer.toGeoJSON();
+        gj.properties = layer.feature.properties;
+        collection.features.push(gj);
+      }
+    });
+    return collection;
+  }
+
+  function generateKML(geojson) {
+    let placemarks = '';
+    const owner = document.getElementById('gh-owner').value.trim() || 'HamsterTAK';
+    const repo = document.getElementById('gh-repo').value.trim() || 'Heenisteininu';
+    const waterdropPinUrl = `https://${owner}.github.io/${repo}/google_pin.png`;
+
+    geojson.features.forEach(f => {
+      const p = f.properties || {};
+      const g = f.geometry;
+      if (!g) return;
+
+      const cat = p.category || 'danger';
+      const cfg = categoryConfig[cat] || categoryConfig.danger;
+      
+      let streamHtmlLine = '';
+      if (p.stream) {
+        const customUrl = formatCustomStreamUrl(p.stream);
+        streamHtmlLine = `\n🎥 Live-Stream: <a href="${customUrl}">${customUrl}</a>`;
+      }
+
+      const descText = `[Einsatz: ${currentMissionCode}]\n[Kategorie: ${cfg.label}]\n${p.desc || ''}${streamHtmlLine}\nKoord.: ${p.coord || ''}\nStand: ${p.time || ''}`;
+
+      if (g.type === 'Point') {
+        placemarks += `
+    <Placemark>
+      <name><![CDATA[${p.name || 'Unbenannt'}]]></name>
+      <description><![CDATA[${descText}]]></description>
+      <Style>
+        <IconStyle>
+          <color>${cfg.kmlColor}</color>
+          <scale>1.1</scale>
+          <Icon>
+            <href>${waterdropPinUrl}</href>
+          </Icon>
+          <hotSpot x="0.5" y="0.04" xunits="fraction" yunits="fraction"/>
+        </IconStyle>
+        <LabelStyle>
+          <color>ffffffff</color>
+          <scale>1.0</scale>
+        </LabelStyle>
+      </Style>
+      <Point><coordinates>${g.coordinates[0]},${g.coordinates[1]},0</coordinates></Point>
+    </Placemark>`;
+      } else if (g.type === 'LineString' || g.type === 'Polygon') {
+        let geomKml = '';
+        if (g.type === 'LineString') {
+          const coords = g.coordinates.map(c => `${c[0]},${c[1]},0`).join(' ');
+          geomKml = `<LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString>`;
+        } else {
+          const coords = g.coordinates[0].map(c => `${c[0]},${c[1]},0`).join(' ');
+          geomKml = `<Polygon><tessellate>1</tessellate><outerBoundaryIs><LinearRing><coordinates>${coords}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
+        }
+
+        placemarks += `
+    <Placemark>
+      <name><![CDATA[${p.name || 'Unbenannte Zone'}]]></name>
+      <description><![CDATA[${descText}]]></description>
+      <Style>
+        <LineStyle>
+          <color>${cfg.kmlColor}</color>
+          <width>4</width>
+        </LineStyle>
+        <PolyStyle>
+          <color>${cfg.kmlPolyColor}</color>
+          <fill>1</fill>
+          <outline>1</outline>
+        </PolyStyle>
+      </Style>
+      ${geomKml}
+    </Placemark>`;
+      }
+    });
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Heenisteininu - Einsatz [${currentMissionCode}]</name>
+    ${placemarks}
+  </Document>
+</kml>`;
+  }
+
+  window.downloadBootstrapKML = function() {
+    if (!currentMissionCode) {
+      alert('Bitte zuerst mit einem Einsatzcode anmelden!');
+      return;
+    }
+    const owner = document.getElementById('gh-owner').value.trim() || 'HamsterTAK';
+    const repo = document.getElementById('gh-repo').value.trim() || 'Heenisteininu';
+    const liveKmlUrl = `https://${owner}.github.io/${repo}/${getMissionFilePath('live.kml')}`;
+
+    const netLinkKml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Folder>
+    <name>Heenisteininu Einsatz [${currentMissionCode}]</name>
+    <NetworkLink>
+      <name>Taktische Lagekarte - ${currentMissionCode} (Auto-Update alle 5 Min.)</name>
+      <Link>
+        <href>${liveKmlUrl}</href>
+        <refreshMode>onInterval</refreshMode>
+        <refreshInterval>300</refreshInterval>
+      </Link>
+    </NetworkLink>
+  </Folder>
+</kml>`;
+    const blob = new Blob([netLinkKml], { type: 'application/vnd.google-earth.kml+xml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `ATAK_Einsatz_${currentMissionCode}.kml`;
+    a.click();
+  };
+
+  // ============================================================================
+  // 10. GitHub-API Schreib-, Sende- und Löschfunktionen
+  // ============================================================================
+  async function putGitHubFile(owner, repo, path, content, token, message, isRawBase64 = false) {
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?t=${Date.now()}`;
+    let sha = null;
+    const getRes = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+    if (getRes.ok) {
+      const getJson = await getRes.json();
+      sha = getJson.sha;
+    }
+    const base64Content = isRawBase64 ? content : btoa(unescape(encodeURIComponent(content)));
+    const body = { message, content: base64Content };
+    if (sha) body.sha = sha;
+
+    const putRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!putRes.ok) {
+      const err = await putRes.json();
+      throw new Error(err.message || 'GitHub-API Schreibfehler');
+    }
+  }
+
+  async function deleteGitHubFileIfExist(owner, repo, path, token, message) {
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?t=${Date.now()}`;
+    const getRes = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+    if (!getRes.ok) return;
+    const getJson = await getRes.json();
+    if (!getJson.sha) return;
+
+    const delRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, sha: getJson.sha })
+    });
+    if (!delRes.ok) {
+      const err = await delRes.json();
+      throw new Error(err.message || `Fehler beim Löschen von ${path}`);
+    }
+  }
+
+  async function publishToGitHub() {
+    if (!currentMissionCode) {
+      alert('Bitte zuerst mit einem Einsatzcode anmelden!');
+      return;
+    }
+    const token = document.getElementById('gh-token').value.trim();
+    const owner = document.getElementById('gh-owner').value.trim();
+    const repo = document.getElementById('gh-repo').value.trim();
+    const callsign = document.getElementById('user-callsign').value.trim();
+
+    if (!token || !owner || !repo) {
+      alert('Bitte oben GitHub-Token, Konto und Repo-Namen vollständig eingeben!');
+      return;
+    }
+
+    setSystemStatus(`Sende [${currentMissionCode}]...`, 'busy');
+
+    try {
+      const isValid = await verifyGitHubToken();
+      if (!isValid) throw new Error('Token-Überprüfung fehlgeschlagen oder keine Schreibberechtigung für dieses Repo!');
+
+      if (callsign) localStorage.setItem('rescue_callsign', callsign);
+
+      const timeStr = new Date().toLocaleTimeString('de-DE', { hour12: false });
+      const byWho = callsign ? ` von ${callsign}` : '';
+
+      appendTacticalLog('action', `Hat die neuesten Lagedaten für Einsatz [${currentMissionCode}] in die Cloud übertragen`, false);
+
+      const collection = collectGeoJSON();
+      const geojsonStr = JSON.stringify(collection, null, 2);
+      const kmlStr = generateKML(collection);
+      const logsStr = JSON.stringify(tacticalLogs, null, 2);
+
+      await putGitHubFile(owner, repo, 'google_pin.png', ATAK_WATERDROP_RAW_BASE64, token, `ATAK-Tropfensymbol bereitgestellt`, true);
+      await putGitHubFile(owner, repo, getMissionFilePath('data.geojson'), geojsonStr, token, `[${currentMissionCode}] Kartendaten aktualisiert (${timeStr}${byWho})`);
+      await putGitHubFile(owner, repo, getMissionFilePath('live.kml'), kmlStr, token, `[${currentMissionCode}] ATAK-KML aktualisiert (${timeStr}${byWho})`);
+      await putGitHubFile(owner, repo, getMissionFilePath('logs.json'), logsStr, token, `[${currentMissionCode}] Einsatztagebuch aktualisiert (${timeStr}${byWho})`);
+
+      const missionKmlUrl = `https://${owner}.github.io/${repo}/${getMissionFilePath('live.kml')}`;
+      setSystemStatus(`[${currentMissionCode}] (${timeStr})`, 'ok');
+      alert(`🟢 Einsatz 【${currentMissionCode}】 erfolgreich veröffentlicht!\n\nATAK-Abonnement-URL für diesen Einsatz:\n${missionKmlUrl}`);
+    } catch (err) {
+      setSystemStatus('Senden fehlgeschlagen', 'error');
+      alert('Speichern fehlgeschlagen: ' + err.message);
+    }
+  }
+</script>
+</body>
+</html>
